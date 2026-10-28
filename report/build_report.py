@@ -364,7 +364,7 @@ def story():
           P("We are deeply grateful to <b>Dr. P. Chitra</b>, Professor and Head of the Department of Computer Science "
             "and Engineering (Emerging Technologies), for the constant support and for creating opportunities to work "
             "on problems that matter to our own campus."),
-          P("We owe special thanks to our guide, <b>Dr. Arun Nehru J</b>, Assistant Professor, Department of CSE "
+          P("We owe special thanks to our guide, <b>Dr. Arun Nehru J</b>, Associate Professor, Department of CSE "
             "(Emerging Technologies), for the guidance, patient reviews and valuable suggestions at every stage of the "
             "project, from defining the carbon accounting boundary to evaluating the final system."),
           P("We also thank the faculty members and laboratory staff of the department, and the estate and facility "
@@ -1011,6 +1011,32 @@ class ListPlaceholder(Flowable):
         self._t.drawOn(self.canv, 0, 0)
 
 
+# "Assistant Professor" glyph boxes (left, bottom, right, top) on the original cover (0) and bonafide (1) pages,
+# in page user space; each is painted over with "Associate Professor" at the same size.
+DESIGNATION_FIX = {0: [(220.9, 507.3, 309.2, 515.5)], 1: [(86.0, 158.7, 170.4, 166.4)]}
+
+
+def designation_patch(page, left, bottom, right, top):
+    import io
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    box = page.mediabox
+    size = (right - left) / pdfmetrics.stringWidth("Assistant Professor", "Times", 1)
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(float(box.right), float(box.top)))
+    c.setFillColor(colors.white)
+    c.rect(left - 1, bottom - 2.5, right - left + 2, top - bottom + 4, stroke=0, fill=1)
+    text = c.beginText(left, bottom)
+    text.setFont("Times", size)
+    text.setHorizScale(100 * min(1, (right - left) / pdfmetrics.stringWidth("Associate Professor", "Times", size)))
+    text.setFillColor(colors.black)
+    text.textOut("Associate Professor")
+    c.drawText(text)
+    c.save()
+    buf.seek(0)
+    return PdfReader(buf).pages[0]
+
+
 def build(original, out):
     body_pdf = HERE / "_body.pdf"
     # pass 1 collects figure/table numbering; pass 2 renders the lists with it
@@ -1025,8 +1051,11 @@ def build(original, out):
 
     writer = PdfWriter()
     cover = PdfReader(str(original))
-    for i in range(2):  # original cover page and bonafide certificate, unchanged
-        writer.add_page(cover.pages[i])
+    for i in range(2):  # original cover page and bonafide certificate, with only the guide's designation corrected
+        page = cover.pages[i]
+        for box in DESIGNATION_FIX.get(i, []):
+            page.merge_page(designation_patch(page, *box))
+        writer.add_page(page)
     for page in PdfReader(str(body_pdf)).pages:
         writer.add_page(page)
     writer.add_metadata({"/Title": TITLE, "/Author": "Yajat M Rawal, S Surendar, Surya Swaminathan, Shivraj Singh",
